@@ -340,9 +340,7 @@ async function handleStop() {
   // บันทึกข้อมูล
   const endTime = nowTH();
   const isPartial = S.gtLog.length < (SC[S.sess.sc]?.steps.length || 0);
-  const result = await autoSaveToBackend(S.gtLog, {
-    ...
-  });
+
 
   // กลับหน้าหลักทันที ไม่แสดง done modal
   document.getElementById('saving-indicator')?.remove();
