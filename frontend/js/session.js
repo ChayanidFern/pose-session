@@ -10,9 +10,8 @@
 
 const $ = id => document.getElementById(id);
 
-// ── State ─────────────────────────────────────────────
 const S = {
-  phase:    'setup',   // 'setup'|'running'|'trans'|'paused'|'done'
+  phase:    'setup',
   sess:     { id: '', sc: 'SC-01', split: 'train', pid: 'P00', rater: '', note: '' },
   t0:       null,
   pausedMs: 0, pauseT: null,
@@ -31,7 +30,6 @@ const S = {
 const RING_R = 68;
 const RING_C = 2 * Math.PI * RING_R;
 
-// ── Utility ───────────────────────────────────────────
 function nowMs() {
   if (!S.t0) return 0;
   let t = performance.now() - S.t0 - S.pausedMs;
@@ -64,7 +62,6 @@ function initSetup() {
     sel.addEventListener('change', renderSCPreview);
     renderSCPreview();
   }
-
   document.querySelectorAll('#sound-opts .sound-opt').forEach(el => {
     el.addEventListener('click', () => {
       document.querySelectorAll('#sound-opts .sound-opt').forEach(e => e.classList.remove('selected'));
@@ -92,7 +89,7 @@ function renderSCPreview() {
   $('sc-preview').classList.add('active');
 }
 
-// ── Start (ไม่มีกล้อง) ────────────────────────────────
+// ── Start ─────────────────────────────────────────────
 function handleStart() {
   ensureAudio();
   S.sess.id    = ($('inp-sess')?.value.trim()) || `sess_${Date.now()}`;
@@ -102,12 +99,10 @@ function handleStart() {
   S.sess.rater = ($('inp-rater')?.value.trim())|| 'unknown';
   S.sess.note  = ($('inp-note')?.value.trim()) || '';
   S.soundMode  = document.querySelector('#sound-opts input:checked')?.value || 'all';
-
   if ($('setup')) $('setup').style.display = 'none';
   doCountdown();
 }
 
-// ── Countdown 3..2..1 ─────────────────────────────────
 function doCountdown() {
   if ($('cdown')) $('cdown').style.display = 'flex';
   let n = 3;
@@ -126,7 +121,6 @@ function doCountdown() {
   }, 1000);
 }
 
-// ── Session Start ─────────────────────────────────────
 function startSession() {
   S.phase      = 'running';
   S.t0         = performance.now();
@@ -136,12 +130,12 @@ function startSession() {
   S._startTime = nowTH();
   S.transMs    = parseInt($('inp-trans')?.value) || 3000;
 
-  if ($('sess'))       $('sess').style.display  = 'flex';
-  if ($('h-sess'))     $('h-sess').textContent  = S.sess.id;
-  if ($('h-sc'))       $('h-sc').textContent    = S.sess.sc;
-  if ($('btn-pause'))  $('btn-pause').disabled  = false;
-  if ($('btn-skip'))   $('btn-skip').disabled   = false;
-  if ($('btn-stop'))   $('btn-stop').disabled   = false;
+  if ($('sess'))      $('sess').style.display  = 'flex';
+  if ($('h-sess'))    $('h-sess').textContent  = S.sess.id;
+  if ($('h-sc'))      $('h-sc').textContent    = S.sess.sc;
+  if ($('btn-pause')) $('btn-pause').disabled  = false;
+  if ($('btn-skip'))  $('btn-skip').disabled   = false;
+  if ($('btn-stop'))  $('btn-stop').disabled   = false;
 
   renderLog();
   nextStep();
@@ -153,20 +147,13 @@ function nextStep() {
   const steps = SC[S.sess.sc]?.steps || [];
   if (S.stepIdx >= 0) finalizeStep();
   S.stepIdx++;
-
-  if (S.stepIdx >= steps.length) {
-    // จบ SC → auto-save แล้วกลับหน้าหลัก
-    endSession();
-    return;
-  }
-
+  if (S.stepIdx >= steps.length) { endSession(); return; }
   if (S.stepIdx > 0 && S.transMs > 0) showTransition(() => doStep());
   else doStep();
 }
 
-// ── Step Transition ───────────────────────────────────
 function showTransition(cb) {
-  const step  = SC[S.sess.sc]?.steps[S.stepIdx];
+  const step = SC[S.sess.sc]?.steps[S.stepIdx];
   if (!step) { cb(); return; }
   const a = ACT[step.act] || { color:'#8B949E', label:'—' };
   const badge = $('prep-next-badge');
@@ -191,7 +178,6 @@ function showTransition(cb) {
   }, 1000);
 }
 
-// ── Do Step ───────────────────────────────────────────
 function doStep() {
   const steps = SC[S.sess.sc]?.steps || [];
   const step  = steps[S.stepIdx];
@@ -202,7 +188,6 @@ function doStep() {
   S.stepDur = step.ms;
   S.pending = { act: step.act, onsetMs: nowMs(), step, sc: S.sess.sc };
 
-  // UI
   const ib = $('i-badge');
   if (ib) { ib.textContent = a.label; ib.style.color = ib.style.borderColor = a.color; }
   if ($('i-name')) { $('i-name').textContent = a.nameTH; $('i-name').style.color = a.color; }
@@ -211,8 +196,7 @@ function doStep() {
   if ($('ring-arc')) $('ring-arc').style.stroke = a.color;
   if ($('ring-num')) $('ring-num').style.color  = a.color;
 
-  // Next preview
-  const nxt    = steps[S.stepIdx + 1];
+  const nxt = steps[S.stepIdx + 1];
   const nextNb = $('i-next-badge');
   if (nxt) {
     const na = ACT[nxt.act] || { color:'#8B949E', label:'—' };
@@ -239,13 +223,7 @@ function finalizeStep() {
   if (!S.pending) return;
   const offMs = nowMs();
   const { act, onsetMs, step, sc } = S.pending;
-  S.gtLog.push({
-    sc, act,
-    onsetMs:    Math.round(onsetMs),
-    offsetMs:   Math.round(offMs),
-    durationMs: Math.round(offMs - onsetMs),
-    th:         step.th,
-  });
+  S.gtLog.push({ sc, act, onsetMs: Math.round(onsetMs), offsetMs: Math.round(offMs), durationMs: Math.round(offMs-onsetMs), th: step.th });
   S.pending = null;
   renderLog();
 }
@@ -299,68 +277,46 @@ function handleSkip() {
   nextStep(); rafLoop();
 }
 
-// ── หยุดบันทึก → confirm → บันทึก → กลับหน้าหลักทันที
-async function handleStop() {
-  if (!confirm('⏹ ยืนยันหยุดบันทึก?\n\nข้อมูลจะถูกบันทึกลง Server อัตโนมัติ')) return;
+// ── หยุดบันทึก → กลับหน้าหลักทันที → บันทึก background
+function handleStop() {
+  if (!confirm('⏹ ยืนยันหยุดบันทึก?\n\nข้อมูลที่ได้จะถูกบันทึกลง Server อัตโนมัติ')) return;
 
   clearTimeout(S.timer); cancelAnimationFrame(S.rafId);
   clearInterval(S.transIv); S.transIv = null;
   $('prep-overlay')?.classList.remove('show');
   if (S.phase === 'paused') S.pausedMs += performance.now() - S.pauseT;
-  S.phase = 'saving';
   finalizeStep();
 
-  // กลับหน้าหลักทันที ไม่รอ
+  // เก็บข้อมูลที่ต้องใช้ก่อน reset
+  const endTime   = nowTH();
+  const isPartial = S.gtLog.length < (SC[S.sess.sc]?.steps.length || 0);
+  const logCopy   = [...S.gtLog];
+  const sessCopy  = { ...S.sess };
+  const startTime = S._startTime;
+
+  // กลับหน้าหลักทันที
   resetToSetup();
 
   // บันทึกใน background
-  const endTime = nowTH();
-  const isPartial = S.gtLog.length < (SC[S.sess.sc]?.steps.length || 0);
-  autoSaveToBackend(S.gtLog, {
-    id:    S.sess.id,
-    sc:    S.sess.sc,
-    split: S.sess.split,
-    pid:   S.sess.pid,
-    rater: S.sess.rater,
-    note:  `${S.sess.note || ''} | start:${S._startTime} end:${endTime}${isPartial ? ' [PARTIAL]' : ''}`.trim(),
+  autoSaveToBackend(logCopy, {
+    id:    sessCopy.id,
+    sc:    sessCopy.sc,
+    split: sessCopy.split,
+    pid:   sessCopy.pid,
+    rater: sessCopy.rater,
+    note:  `${sessCopy.note || ''} | start:${startTime} end:${endTime}${isPartial ? ' [PARTIAL]' : ''}`.trim(),
   }).then(r => {
     if (!r.ok) console.warn('บันทึกไม่สำเร็จ:', r.msg);
   });
 }
-  // แสดง saving indicator
-   // แสดง saving indicator
-  if ($('sess')) {
-    const ind = document.createElement('div');
-    ind.id = 'saving-indicator';
-    ind.style.cssText = '...';
-    ind.innerHTML = '...';
-    document.body.appendChild(ind);
-  }
 
-  // บันทึกข้อมูล
-  const endTime = nowTH();
-  const isPartial = S.gtLog.length < (SC[S.sess.sc]?.steps.length || 0);
-
-
-  // กลับหน้าหลักทันที ไม่แสดง done modal
-  document.getElementById('saving-indicator')?.remove();
-  resetToSetup();
-
- if (!result.ok) {
-    alert('⚠️ บันทึก Server ไม่สำเร็จ\nกรุณา export CSV แทน\n' + result.msg);
-  }
-}
-
-// ── End Session (ครบ SC) → auto-save → done screen ──
+// ── End Session (ครบ SC) ──────────────────────────────
 async function endSession() {
   S.phase = 'done'; cancelAnimationFrame(S.rafId);
   if ($('bar-fill')) $('bar-fill').style.width = '100%';
 
-  const endTime   = nowTH();
-  const isPartial = false;
-
-  // auto-save
-  const result = await autoSaveToBackend(S.gtLog, {
+  const endTime = nowTH();
+  const result  = await autoSaveToBackend(S.gtLog, {
     id:    S.sess.id,
     sc:    S.sess.sc,
     split: S.sess.split,
@@ -379,7 +335,7 @@ async function endSession() {
   if ($('done')) $('done').style.display = 'flex';
 }
 
-// ── Reset กลับหน้า setup ─────────────────────────────
+// ── Reset ─────────────────────────────────────────────
 function resetToSetup() {
   S.phase    = 'setup';
   S.gtLog    = [];
@@ -393,14 +349,11 @@ function resetToSetup() {
   if ($('btn-pause')) { $('btn-pause').textContent = '⏸ หยุดชั่วคราว'; $('btn-pause').className = 'btn-ctrl pause'; }
 }
 
-function handleNewSession() {
-  resetToSetup();
-}
+function handleNewSession() { resetToSetup(); }
 
 // ── Log ───────────────────────────────────────────────
 function renderLog() {
-  const body   = $('log-body');
-  const footer = $('log-footer');
+  const body = $('log-body'), footer = $('log-footer');
   if (!body) return;
   if (!S.gtLog.length) {
     body.innerHTML = '<div style="color:var(--tx3);font-size:11px;text-align:center;padding:16px">ยังไม่มีข้อมูล</div>';
