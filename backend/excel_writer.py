@@ -269,37 +269,131 @@ def _write_metadata_sheet(ws, sess: Dict, step_count: int):
         ws.row_dimensions[row_idx].height = 18
 
 
-# ── Main: สร้างและบันทึก Excel ───────────────────────
+# ── Master file: append ทุก session ต่อกัน ─────────────
+MASTER_FILE = "all_sessions.xlsx"
+
+MASTER_HEADERS = [
+    ("ลำดับ",             6),
+    ("Session ID",        22),
+    ("Participant",       12),
+    ("Scenario",          10),
+    ("Split",              8),
+    ("Rater",             12),
+    ("กิจกรรม",           12),
+    ("ชื่อกิจกรรม",       18),
+    ("Risk Level",        12),
+    ("คำสั่ง",             44),
+    ("เวลาเริ่ม (ms)",    14),
+    ("เวลาสิ้นสุด (ms)", 16),
+    ("ระยะเวลา (ms)",    14),
+    ("ระยะเวลา (s)",     12),
+    ("วันที่เริ่ม Session", 22),
+    ("วันที่จบ Session",   22),
+    ("สถานะ",             10),
+    ("Note",              24),
+    ("บันทึกเมื่อ",        22),
+]
+
+def _parse_times(note_raw: str):
+    """แยก start/end time และ note จริงออกจาก note field"""
+    import re
+    is_partial = "[PARTIAL]" in note_raw
+    sm = re.search(r'start:([\d/: ]+)', note_raw)
+    em = re.search(r'end:([\d/: ]+?)(?:\s*\[|$)', note_raw)
+    start_time = sm.group(1).strip() if sm else ""
+    end_time   = em.group(1).strip() if em else ""
+    note_clean = re.sub(r'\|.*', '', note_raw).strip()
+    return start_time, end_time, is_partial, note_clean
+
+
 def save_session_to_excel(sess: Dict, data_dir: str) -> str:
     """
-    สร้างไฟล์ Excel จากข้อมูล session
-    คืนค่า filename ที่บันทึก
+    Append ข้อมูล session ต่อท้าย all_sessions.xlsx (ไฟล์เดียว)
+    ถ้าหยุดกลางคันก็บันทึกได้ — มี timestamp แม่นยำ
     """
-    steps = sess.get("steps", [])
-    sess_id = sess.get("sessId", f"sess_{int(datetime.now().timestamp())}")
-    sc      = sess.get("sc", "SC-00")
-    pid     = sess.get("pid", "P00")
-    ts      = datetime.now().strftime("%Y%m%d_%H%M%S")
+    steps    = sess.get("steps", [])
+    sess_id  = sess.get("sessId", f"sess_{int(datetime.now().timestamp())}")
+    sc       = sess.get("sc", "SC-00")
+    pid      = sess.get("pid", "P00")
+    split    = sess.get("split", "train")
+    rater    = sess.get("rater", "")
+    note_raw = sess.get("note", "")
 
-    filename = f"gt_{sess_id}_{sc}_{pid}_{ts}.xlsx"
-    filepath = os.path.join(data_dir, filename)
+    # แยก timestamp จาก note
+    start_time, end_time, is_partial, note_clean = _parse_times(note_raw)
+    status   = "PARTIAL" if is_partial else "COMPLETE"
 
-    wb = openpyxl.Workbook()
+    # เวลาบันทึกจริง (server time UTC+7)
+    from datetime import timezone, timedelta
+    bkk = timezone(timedelta(hours=7))
+    now_bkk = datetime.now(bkk).strftime("%d/%m/%Y %H:%M:%S")
+    if not start_time: start_time = now_bkk
+    if not end_time:   end_time   = now_bkk
 
-    # Sheet 1: ข้อมูล GT
-    ws1 = wb.active
-    _write_gt_sheet(ws1, steps, sess)
+    master_path = os.path.join(data_dir, MASTER_FILE)
 
-    # Sheet 2: สรุปกิจกรรม
-    ws2 = wb.create_sheet()
-    _write_summary_sheet(ws2, steps)
+    # โหลดไฟล์เดิม หรือสร้างใหม่
+    if os.path.exists(master_path):
+        wb = openpyxl.load_workbook(master_path)
+        ws = wb["ข้อมูล GT"]
+        next_row = ws.max_row + 1
+        row_count = ws.max_row - 1  # ไม่นับ header
+    else:
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "ข้อมูล GT"
+        # เขียน header ครั้งแรกครั้งเดียว
+        for col_idx, (h, w) in enumerate(MASTER_HEADERS, 1):
+            cell = ws.cell(row=1, column=col_idx, value=h)
+            cell.font      = _header_font()
+            cell.fill      = _header_fill()
+            cell.alignment = _center()
+            cell.border    = _border()
+            ws.column_dimensions[get_column_letter(col_idx)].width = w
+        ws.row_dimensions[1].height = 22
+        ws.freeze_panes = "A2"
+        next_row  = 2
+        row_count = 0
 
-    # Sheet 3: Metadata
-    ws3 = wb.create_sheet()
-    _write_metadata_sheet(ws3, sess, len(steps))
+    global_idx = row_count + 1
 
-    wb.save(filepath)
-    return filename
+    for step in steps:
+        act   = step.get("act", "")
+        risk_label, risk_color = ACT_RISK.get(act, ("—", COLORS["row_even"]))
+        bg    = risk_color if global_idx % 2 == 1 else COLORS["row_even"]
+        fill  = PatternFill("solid", fgColor=bg)
+
+        values = [
+            global_idx,
+            sess_id, pid, sc, split, rater,
+            act,
+            ACT_NAME_TH.get(act, act),
+            risk_label,
+            step.get("th", ""),
+            step.get("onsetMs", 0),
+            step.get("offsetMs", 0),
+            step.get("durationMs", 0),
+            round(step.get("durationMs", 0) / 1000, 2),
+            start_time,
+            end_time,
+            status,
+            note_clean,
+            now_bkk,
+        ]
+
+        for col_idx, val in enumerate(values, 1):
+            cell = ws.cell(row=next_row, column=col_idx, value=val)
+            cell.fill      = fill
+            cell.font      = _body_font()
+            cell.border    = _border()
+            cell.alignment = _left() if col_idx == 10 else _center()
+        ws.row_dimensions[next_row].height = 18
+
+        next_row   += 1
+        global_idx += 1
+
+    wb.save(master_path)
+    return MASTER_FILE
 
 
 # ── List sessions ─────────────────────────────────────
@@ -319,66 +413,3 @@ def list_sessions(data_dir: str) -> list:
                 "download": f"/api/download/{f}",
             })
     return files
-MASTER_FILE = "all_sessions.xlsx"
-
-def save_session_to_excel(sess: Dict, data_dir: str) -> str:
-    steps    = sess.get("steps", [])
-    pid      = sess.get("pid", "P00")
-    sc       = sess.get("sc", "SC-00")
-    sess_id  = sess.get("sessId", f"sess_{int(datetime.now().timestamp())}")
-    split    = sess.get("split", "train")
-    rater    = sess.get("rater", "")
-    note     = sess.get("note", "")
-    ts       = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    master_path = os.path.join(data_dir, MASTER_FILE)
-
-    # โหลดไฟล์เดิมถ้ามี ถ้าไม่มีสร้างใหม่
-    if os.path.exists(master_path):
-        wb = openpyxl.load_workbook(master_path)
-        ws = wb["ข้อมูล GT"]
-    else:
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "ข้อมูล GT"
-        # เขียน header ครั้งแรกครั้งเดียว
-        headers = ["ลำดับ","Session","Participant","Scenario","Split","Rater",
-                   "กิจกรรม","ชื่อกิจกรรม","คำสั่ง",
-                   "เวลาเริ่ม(ms)","เวลาสิ้นสุด(ms)","ระยะเวลา(ms)","ระยะเวลา(s)",
-                   "Note","Timestamp"]
-        for col, h in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=h)
-            cell.font = Font(name="Sarabun", bold=True, color="E6EDF3")
-            cell.fill = PatternFill("solid", fgColor="1C2333")
-            cell.alignment = Alignment(horizontal="center")
-
-    # หาแถวล่าสุด
-    next_row = ws.max_row + 1
-    global_idx = next_row - 1  # ลำดับต่อเนื่อง
-
-    for step in steps:
-        act = step.get("act", "")
-        row_data = [
-            global_idx,
-            sess_id, pid, sc, split, rater,
-            act,
-            ACT_NAME_TH.get(act, act),
-            step.get("th", ""),
-            step.get("onsetMs", 0),
-            step.get("offsetMs", 0),
-            step.get("durationMs", 0),
-            round(step.get("durationMs", 0) / 1000, 2),
-            note, ts
-        ]
-        _, risk_color = ACT_RISK.get(act, ("—", "FFFFFF"))
-        fill = PatternFill("solid", fgColor=risk_color)
-        for col, val in enumerate(row_data, 1):
-            cell = ws.cell(row=next_row, column=col, value=val)
-            cell.fill = fill
-            cell.font = Font(name="Sarabun", size=10)
-            cell.alignment = Alignment(horizontal="center")
-        next_row += 1
-        global_idx += 1
-
-    wb.save(master_path)
-    return MASTER_FILE
