@@ -1,6 +1,9 @@
-/* ═══════════════════════════════════════════════════
-   Neck GT Controller — Session Logic
-   โหมด Full Run: รัน SC ทุกตัวต่อกันในครั้งเดียว
+* ═══════════════════════════════════════════════════
+   Neck GT Controller v3 — Session Logic
+   - ไม่มีกล้อง
+   - เลือก SC เดียว รันอันนั้น
+   - ส่งข้อมูลเมื่อจบแต่ละ SC อัตโนมัติ
+   - หยุดกลางคัน → confirm → กลับหน้าหลักทันที
    ═══════════════════════════════════════════════════ */
 
 'use strict';
@@ -9,27 +12,20 @@ const $ = id => document.getElementById(id);
 
 // ── State ─────────────────────────────────────────────
 const S = {
-  phase:    'setup',   // 'setup'|'running'|'trans'|'sc-trans'|'paused'|'done'
-  sess:     { id: '', split: 'train', pid: 'P00', rater: '', note: '' },
-
-  // Full-run playlist
-  scList:   [],        // ['SC-01','SC-02',...] ลำดับ SC ทั้งหมด
-  scIdx:    0,         // SC ปัจจุบัน index ใน scList
-  get curSC() { return this.scList[this.scIdx]; },
-
-  stream:    null,
-  recChunks: [], recorder: null, recBytes: 0,
-  t0:        null,
-  pausedMs:  0, pauseT: null,
-  stepIdx:   -1,
-  stepT:     null, stepDur: 0,
-  pending:   null,
-  transMs:   3000,
-  transIv:   null,
-  soundMode: 'all',
-  gtLog:     [],
-  rafId:     null,
-  timer:     null,
+  phase:    'setup',   // 'setup'|'running'|'trans'|'paused'|'done'
+  sess:     { id: '', sc: 'SC-01', split: 'train', pid: 'P00', rater: '', note: '' },
+  t0:       null,
+  pausedMs: 0, pauseT: null,
+  stepIdx:  -1,
+  stepT:    null, stepDur: 0,
+  pending:  null,
+  transMs:  3000,
+  transIv:  null,
+  soundMode:'all',
+  gtLog:    [],
+  rafId:    null,
+  timer:    null,
+  _startTime: '',
 };
 
 const RING_R = 68;
@@ -44,31 +40,29 @@ function nowMs() {
 }
 function fmtMs(ms) {
   const s = Math.floor(ms / 1000), m = Math.floor(s / 60);
-  return `${m}:${(s % 60).toString().padStart(2,'0')}.${Math.floor(ms%1000).toString().padStart(3,'0')}`;
+  return `${m}:${(s%60).toString().padStart(2,'0')}.${Math.floor(ms%1000).toString().padStart(3,'0')}`;
 }
 function fmtSec(s) { return s >= 10 ? s.toFixed(0)+'s' : s.toFixed(1)+'s'; }
-
-function totalStepsAll() {
-  return S.scList.reduce((a, id) => a + (SC[id]?.steps.length || 0), 0);
-}
-function stepsCompletedBefore(scIdx) {
-  return S.scList.slice(0, scIdx).reduce((a, id) => a + (SC[id]?.steps.length || 0), 0);
+function nowTH() {
+  return new Date().toLocaleString('th-TH', {
+    year:'numeric', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', second:'2-digit',
+    hour12: false, timeZone:'Asia/Bangkok'
+  });
 }
 
 // ── Setup ─────────────────────────────────────────────
 function initSetup() {
-  // Preview ของ Full Run
-  const totalSec = Object.values(SC).reduce((a, sc) =>
-    a + sc.steps.reduce((b, s) => b + s.ms, 0), 0) / 1000;
-  const m = Math.floor(totalSec / 60), s = Math.round(totalSec % 60);
-  if ($('sc-preview')) {
-    $('sc-preview').innerHTML = `
-      <div class="sc-name">Full Run — SC-01 ถึง SC-RELAX ทั้งหมด</div>
-      <div>รัน ${Object.keys(SC).length} scenarios ต่อกันในครั้งเดียว มีแจ้งเตือนเมื่อเปลี่ยน SC</div>
-      <div style="margin-top:4px;font-size:11px;color:var(--tx3);font-family:var(--mono)">
-        ${Object.keys(SC).length} SC · รวม ~${m}m ${s}s
-      </div>`;
-    $('sc-preview').classList.add('active');
+  const sel = $('inp-sc');
+  if (sel) {
+    Object.entries(SC).forEach(([id, sc]) => {
+      const o = document.createElement('option');
+      o.value = id;
+      o.textContent = `${id} — ${sc.nameTH}`;
+      sel.appendChild(o);
+    });
+    sel.addEventListener('change', renderSCPreview);
+    renderSCPreview();
   }
 
   document.querySelectorAll('#sound-opts .sound-opt').forEach(el => {
@@ -77,44 +71,39 @@ function initSetup() {
       el.classList.add('selected');
     });
   });
-
-  if (location.protocol === 'file:' || /iPad|iPhone|iPod/.test(navigator.userAgent)) {
-    if ($('ipad-warn')) $('ipad-warn').style.display = 'block';
-  }
 }
 
-// ── Camera + Start ────────────────────────────────────
-async function handleStart() {
+function renderSCPreview() {
+  const id = $('inp-sc')?.value;
+  const sc = SC[id];
+  if (!sc || !$('sc-preview')) return;
+  const totalSec = Math.round(sc.steps.reduce((a,s) => a+s.ms, 0) / 1000);
+  const m = Math.floor(totalSec/60), s = totalSec%60;
+  const acts = [...new Set(sc.steps.map(s => s.act))];
+  const chips = acts.map(a => {
+    const ac = ACT[a] || { color:'#888', label:a };
+    return `<span class="sc-act-chip" style="color:${ac.color};border-color:${ac.color}">${ac.label}</span>`;
+  }).join('');
+  $('sc-preview').innerHTML = `
+    <div class="sc-name">${id} — ${sc.nameTH}</div>
+    <div>${sc.desc}</div>
+    <div style="margin-top:4px;font-size:11px;color:var(--tx3);font-family:var(--mono)">${sc.steps.length} steps · ${m>0?m+'m ':''}${s}s</div>
+    <div class="sc-acts">${chips}</div>`;
+  $('sc-preview').classList.add('active');
+}
+
+// ── Start (ไม่มีกล้อง) ────────────────────────────────
+function handleStart() {
   ensureAudio();
-  S.sess.id    = ($('inp-sess')?.value.trim())  || `sess_${Date.now()}`;
-  S.sess.split = $('inp-split')?.value          || 'train';
-  S.sess.pid   = ($('inp-pid')?.value.trim())   || 'P00';
-  S.sess.rater = ($('inp-rater')?.value.trim()) || 'unknown';
-  S.sess.note  = ($('inp-note')?.value.trim())  || '';
+  S.sess.id    = ($('inp-sess')?.value.trim()) || `sess_${Date.now()}`;
+  S.sess.sc    = $('inp-sc')?.value            || 'SC-01';
+  S.sess.split = $('inp-split')?.value         || 'train';
+  S.sess.pid   = ($('inp-pid')?.value.trim())  || 'P00';
+  S.sess.rater = ($('inp-rater')?.value.trim())|| 'unknown';
+  S.sess.note  = ($('inp-note')?.value.trim()) || '';
   S.soundMode  = document.querySelector('#sound-opts input:checked')?.value || 'all';
 
-  if (location.protocol === 'file:') {
-    alert('⚠️ iPad/Safari ต้องการ HTTPS หรือ localhost');
-    return;
-  }
-
-  try {
-    S.stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
-      audio: false,
-    });
-  } catch {
-    try {
-      S.stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    } catch (e2) {
-      alert('❌ เปิดกล้องไม่ได้\n' + e2.message);
-      return;
-    }
-  }
-
-  if ($('cam-feed'))  $('cam-feed').srcObject  = S.stream;
-  if ($('cam-small')) $('cam-small').srcObject = S.stream;
-  if ($('setup'))     $('setup').style.display = 'none';
+  if ($('setup')) $('setup').style.display = 'none';
   doCountdown();
 }
 
@@ -139,45 +128,20 @@ function doCountdown() {
 
 // ── Session Start ─────────────────────────────────────
 function startSession() {
-  S.phase     = 'running';
-  S.t0        = performance.now();
-  S.pausedMs  = 0;
-  // บันทึกเวลาเริ่มจริงๆ
-  S._startTime = new Date().toLocaleString('th-TH', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false, timeZone: 'Asia/Bangkok'
-  });
-  S.stepIdx   = -1;
-  S.gtLog     = [];
-  S.scIdx     = 0;
-  S.scList    = Object.keys(SC);   // SC ทุกตัวตามลำดับใน scenarios.js
-  S.transMs   = parseInt($('inp-trans')?.value) || 3000;
-  S.recChunks = []; S.recBytes = 0;
-  if ($('rec-lbl')) $('rec-lbl').textContent = 'REC 0.0 MB';
+  S.phase      = 'running';
+  S.t0         = performance.now();
+  S.pausedMs   = 0;
+  S.stepIdx    = -1;
+  S.gtLog      = [];
+  S._startTime = nowTH();
+  S.transMs    = parseInt($('inp-trans')?.value) || 3000;
 
-  // MediaRecorder
-  try {
-    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp8') ? 'video/webm;codecs=vp8' : 'video/webm';
-    S.recorder = new MediaRecorder(S.stream, { mimeType: mime, videoBitsPerSecond: 800000 });
-    S.recorder.ondataavailable = e => {
-      if (e.data?.size > 0) {
-        S.recChunks.push(e.data);
-        S.recBytes += e.data.size;
-        if ($('rec-lbl')) $('rec-lbl').textContent = `REC ${(S.recBytes/1048576).toFixed(1)} MB`;
-      }
-    };
-    S.recorder.start(1000);
-  } catch (err) { console.warn('MediaRecorder unavailable:', err); S.recorder = null; }
-
-  if ($('sess'))        $('sess').style.display  = 'flex';
-  if ($('h-sess'))      $('h-sess').textContent  = S.sess.id;
-  if ($('h-sc'))        $('h-sc').textContent    = S.curSC;
-  if ($('btn-pause'))   $('btn-pause').disabled  = false;
-  if ($('btn-skip'))    $('btn-skip').disabled   = false;
-  if ($('btn-stop'))    $('btn-stop').disabled   = false;
-  if ($('btn-exp'))     $('btn-exp').disabled    = true;
-  if ($('btn-exp-xl'))  $('btn-exp-xl').disabled = true;
+  if ($('sess'))       $('sess').style.display  = 'flex';
+  if ($('h-sess'))     $('h-sess').textContent  = S.sess.id;
+  if ($('h-sc'))       $('h-sc').textContent    = S.sess.sc;
+  if ($('btn-pause'))  $('btn-pause').disabled  = false;
+  if ($('btn-skip'))   $('btn-skip').disabled   = false;
+  if ($('btn-stop'))   $('btn-stop').disabled   = false;
 
   renderLog();
   nextStep();
@@ -186,24 +150,13 @@ function startSession() {
 
 // ── Step Engine ───────────────────────────────────────
 function nextStep() {
-  const steps = SC[S.curSC]?.steps || [];
+  const steps = SC[S.sess.sc]?.steps || [];
   if (S.stepIdx >= 0) finalizeStep();
   S.stepIdx++;
 
   if (S.stepIdx >= steps.length) {
-    // SC นี้จบแล้ว → SC ถัดไป?
-    S.scIdx++;
-    if (S.scIdx >= S.scList.length) {
-      endSession(); return;
-    }
-    S.stepIdx = -1;
-    // แสดง SC Transition 10 วินาที
-    showSCTransition(() => {
-      S.stepIdx = 0;
-      S.pending = null;
-      if ($('h-sc')) $('h-sc').textContent = S.curSC;
-      doStep();
-    });
+    // จบ SC → auto-save แล้วกลับหน้าหลัก
+    endSession();
     return;
   }
 
@@ -211,56 +164,19 @@ function nextStep() {
   else doStep();
 }
 
-// ── SC Transition (เปลี่ยน SC) — 10 วินาที ────────────
-function showSCTransition(cb) {
-  const nextSC = S.scList[S.scIdx];
-  const scData = SC[nextSC];
-  const el     = $('sc-trans-overlay');
-  if (!el) { cb(); return; }
-
-  // เสียง ding แจ้งเตือนเปลี่ยน SC
-  beepDing(S.soundMode);
-
-  $('sc-trans-id').textContent   = nextSC;
-  $('sc-trans-name').textContent = scData?.nameTH || '';
-  $('sc-trans-desc').textContent = scData?.desc   || '';
-
-  let n = 10;
-  $('sc-trans-n').textContent = n;
-  el.classList.add('show');
-  S.phase = 'sc-trans';
-
-  clearInterval(S.transIv);
-  S.transIv = setInterval(() => {
-    n--;
-    if ($('sc-trans-n')) $('sc-trans-n').textContent = n;
-    beepTick(S.soundMode);
-    if (n <= 0) {
-      clearInterval(S.transIv); S.transIv = null;
-      el.classList.remove('show');
-      S.phase = 'running';
-      cb();
-    }
-  }, 1000);
-}
-
-// ── Step Transition (เปลี่ยน step ภายใน SC) ───────────
+// ── Step Transition ───────────────────────────────────
 function showTransition(cb) {
-  const step  = SC[S.curSC]?.steps[S.stepIdx];
+  const step  = SC[S.sess.sc]?.steps[S.stepIdx];
   if (!step) { cb(); return; }
-  const a     = ACT[step.act] || { color: '#8B949E', label: '—' };
+  const a = ACT[step.act] || { color:'#8B949E', label:'—' };
   const badge = $('prep-next-badge');
-  if (badge) {
-    badge.textContent = a.label;
-    badge.style.color = badge.style.borderColor = a.color;
-  }
+  if (badge) { badge.textContent = a.label; badge.style.color = badge.style.borderColor = a.color; }
   if ($('prep-next-th'))   $('prep-next-th').textContent   = step.th;
   if ($('prep-next-note')) $('prep-next-note').textContent = step.note;
   let n = Math.ceil(S.transMs / 1000);
   if ($('prep-n')) $('prep-n').textContent = n;
   $('prep-overlay')?.classList.add('show');
-  S.phase = 'trans';
-  beepTick(S.soundMode);
+  S.phase = 'trans'; beepTick(S.soundMode);
   clearInterval(S.transIv);
   S.transIv = setInterval(() => {
     n--;
@@ -277,14 +193,14 @@ function showTransition(cb) {
 
 // ── Do Step ───────────────────────────────────────────
 function doStep() {
-  const steps = SC[S.curSC]?.steps || [];
+  const steps = SC[S.sess.sc]?.steps || [];
   const step  = steps[S.stepIdx];
   if (!step) { nextStep(); return; }
-  const a = ACT[step.act] || { color: '#8B949E', label: 'ACT', nameTH: '' };
+  const a = ACT[step.act] || { color:'#8B949E', label:'ACT', nameTH:'' };
 
   S.stepT   = performance.now();
   S.stepDur = step.ms;
-  S.pending = { act: step.act, onsetMs: nowMs(), step, sc: S.curSC };
+  S.pending = { act: step.act, onsetMs: nowMs(), step, sc: S.sess.sc };
 
   // UI
   const ib = $('i-badge');
@@ -299,27 +215,20 @@ function doStep() {
   const nxt    = steps[S.stepIdx + 1];
   const nextNb = $('i-next-badge');
   if (nxt) {
-    const na = ACT[nxt.act] || { color: '#8B949E', label: '—' };
+    const na = ACT[nxt.act] || { color:'#8B949E', label:'—' };
     if (nextNb) { nextNb.textContent = na.label; nextNb.style.color = nextNb.style.borderColor = na.color; }
     if ($('i-next-th'))   $('i-next-th').textContent   = nxt.th;
     if ($('i-next-note')) $('i-next-note').textContent = nxt.note;
   } else {
-    // จบ SC นี้แล้ว — แสดง SC ถัดไป
-    const nextSCId   = S.scList[S.scIdx + 1];
-    const nextSCData = SC[nextSCId];
-    if (nextNb) { nextNb.textContent = nextSCId || '—'; nextNb.style.color = '#22D3EE'; nextNb.style.borderColor = '#22D3EE'; }
-    if ($('i-next-th'))   $('i-next-th').textContent   = nextSCData ? `▶ ${nextSCData.nameTH}` : 'สิ้นสุดทุก Scenario';
-    if ($('i-next-note')) $('i-next-note').textContent = nextSCData ? 'SC ถัดไป — จะมีการแจ้งเตือน 10 วินาที' : '';
+    if (nextNb) { nextNb.textContent = '—'; nextNb.style.color = 'var(--tx3)'; nextNb.style.borderColor = 'var(--bdr)'; }
+    if ($('i-next-th'))   $('i-next-th').textContent   = 'ขั้นตอนสุดท้ายของ SC นี้';
+    if ($('i-next-note')) $('i-next-note').textContent = 'ข้อมูลจะถูกบันทึกอัตโนมัติ';
   }
 
-  // Progress — คำนวณจากทุก SC
-  const doneSteps  = stepsCompletedBefore(S.scIdx) + S.stepIdx;
-  const totalSteps = totalStepsAll();
-  if ($('h-steps')) $('h-steps').textContent = `${S.curSC} · ${S.stepIdx+1}/${steps.length}`;
-  if ($('bar-fill')) $('bar-fill').style.width = `${(doneSteps / totalSteps) * 100}%`;
+  $('h-steps')  && ($('h-steps').textContent = `${S.stepIdx+1}/${steps.length}`);
+  $('bar-fill') && ($('bar-fill').style.width = `${(S.stepIdx/steps.length)*100}%`);
 
   if (S.soundMode === 'all') beepStart(S.soundMode);
-
   clearTimeout(S.timer);
   const warn3 = step.ms - 3000;
   if (warn3 > 500) setTimeout(() => { if (S.phase === 'running') beepWarn(S.soundMode); }, warn3);
@@ -331,8 +240,7 @@ function finalizeStep() {
   const offMs = nowMs();
   const { act, onsetMs, step, sc } = S.pending;
   S.gtLog.push({
-    sc,
-    act,
+    sc, act,
     onsetMs:    Math.round(onsetMs),
     offsetMs:   Math.round(offMs),
     durationMs: Math.round(offMs - onsetMs),
@@ -346,12 +254,11 @@ function finalizeStep() {
 function rafLoop() {
   cancelAnimationFrame(S.rafId);
   function frame() {
-    if (S.phase === 'trans' || S.phase === 'sc-trans') {
+    if (S.phase === 'trans') {
       if ($('h-clock')) $('h-clock').textContent = fmtMs(nowMs());
       if ($('ring-arc')) $('ring-arc').style.strokeDashoffset = RING_C;
       if ($('ring-num')) $('ring-num').textContent = '—';
-      S.rafId = requestAnimationFrame(frame);
-      return;
+      S.rafId = requestAnimationFrame(frame); return;
     }
     if (S.phase !== 'running') return;
     if ($('h-clock')) $('h-clock').textContent = fmtMs(nowMs());
@@ -371,12 +278,10 @@ function handlePause() {
     S.phase = 'paused'; S.pauseT = performance.now();
     clearTimeout(S.timer); cancelAnimationFrame(S.rafId);
     if ($('btn-pause')) { $('btn-pause').textContent = '▶ ดำเนินต่อ'; $('btn-pause').className = 'btn-ctrl play'; }
-    if ($('rec-lbl')) $('rec-lbl').textContent = 'PAUSED';
   } else if (S.phase === 'paused') {
     const d = performance.now() - S.pauseT;
     S.pausedMs += d; S.stepT += d; S.phase = 'running';
     if ($('btn-pause')) { $('btn-pause').textContent = '⏸ หยุดชั่วคราว'; $('btn-pause').className = 'btn-ctrl pause'; }
-    if ($('rec-lbl')) $('rec-lbl').textContent = 'LIVE';
     const rem = Math.max(0, S.stepDur - (performance.now() - S.stepT));
     S.timer = setTimeout(() => { beepDing(S.soundMode); nextStep(); }, rem);
     rafLoop();
@@ -390,89 +295,96 @@ function handleSkip() {
     const d = performance.now() - S.pauseT;
     S.pausedMs += d; S.stepT += d; S.phase = 'running';
     if ($('btn-pause')) { $('btn-pause').textContent = '⏸ หยุดชั่วคราว'; $('btn-pause').className = 'btn-ctrl pause'; }
-    if ($('rec-lbl')) $('rec-lbl').textContent = 'LIVE';
   }
   nextStep(); rafLoop();
 }
 
-function handleStop() {
-  if (!confirm('สิ้นสุด session ก่อนครบทุก SC?\nข้อมูลที่เก็บได้จนถึงตอนนี้จะถูกบันทึก')) return;
-  clearTimeout(S.timer);
-  if (S.phase === 'paused') S.pausedMs += performance.now() - S.pauseT;
-  finalizeStep();
-  endSession(); // endSession จะ auto-save เองค่ะ
-}
+// ── หยุดบันทึก → confirm → บันทึก → กลับหน้าหลักทันที
+async function handleStop() {
+  if (!confirm('⏹ ยืนยันหยุดบันทึก?\n\nข้อมูลที่ได้จนถึงตอนนี้จะถูกบันทึกลง Server อัตโนมัติ\nแล้วกลับหน้าหลักทันที')) return;
 
-function handleAbort() {
-  if (!confirm('ยกเลิก session ทั้งหมด (ข้อมูลทั้งหมดจะหาย)?')) return;
   clearTimeout(S.timer); cancelAnimationFrame(S.rafId);
-  if (S.recorder?.state !== 'inactive') { S.recorder.onstop = null; S.recorder?.stop(); }
-  S.recorder = null; S.recChunks = [];
   clearInterval(S.transIv); S.transIv = null;
   $('prep-overlay')?.classList.remove('show');
-  $('sc-trans-overlay')?.classList.remove('show');
-  S.stream?.getTracks().forEach(t => t.stop());
-  S.stream = null; S.phase = 'setup';
-  if ($('sess'))  $('sess').style.display  = 'none';
-  if ($('setup')) $('setup').style.display = 'flex';
-}
 
-// ── End Session ───────────────────────────────────────
-async function endSession() {
-  S.phase = 'done'; cancelAnimationFrame(S.rafId);
-  if ($('bar-fill'))   $('bar-fill').style.width = '100%';
-  if ($('btn-exp'))    $('btn-exp').disabled      = false;
-  if ($('btn-exp-xl')) $('btn-exp-xl').disabled   = false;
+  if (S.phase === 'paused') S.pausedMs += performance.now() - S.pauseT;
+  S.phase = 'saving';
+  finalizeStep();
 
-  // บันทึก endTime จริงๆ ณ เวลานี้
-  S.sess.endTime = new Date().toLocaleString('th-TH', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false, timeZone: 'Asia/Bangkok'
-  });
-  S.sess.startTime = S._startTime || '—';
+  // แสดง saving indicator
+  if ($('sess')) {
+    const ind = document.createElement('div');
+    ind.id = 'saving-indicator';
+    ind.style.cssText = 'position:fixed;inset:0;background:rgba(13,17,23,.88);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;z-index:999;color:#E6EDF3;font-family:var(--font)';
+    ind.innerHTML = '<div style="font-size:36px">⏳</div><div style="font-size:18px;font-weight:600">กำลังบันทึกลง Server...</div>';
+    document.body.appendChild(ind);
+  }
 
-  const scsDone   = [...new Set(S.gtLog.map(e => e.sc))];
-  const scTotal   = S.scList.length;
-  const isPartial = scsDone.length < scTotal;
-
-  if ($('done-txt')) $('done-txt').textContent =
-    `${isPartial ? '⚠️ หยุดกลางคัน' : '✅ ครบทุก SC'}\n` +
-    `บันทึก ${S.gtLog.length} steps · ${scsDone.length}/${scTotal} SC\n` +
-    `Session: ${S.sess.id}\n` +
-    `เริ่ม: ${S.sess.startTime}  จบ: ${S.sess.endTime}`;
-
-  // ── Auto-save ไป Backend ทันที ────────────────────
-  if ($('done-txt')) $('done-txt').textContent += '\n\n⏳ กำลังบันทึกลง Server...';
-  const saveResult = await autoSaveToBackend(S.gtLog, {
+  // บันทึกข้อมูล
+  const endTime = nowTH();
+  const isPartial = S.gtLog.length < (SC[S.sess.sc]?.steps.length || 0);
+  const result = await autoSaveToBackend(S.gtLog, {
     id:    S.sess.id,
-    sc:    scsDone.join('+') || S.curSC || 'ALL',
+    sc:    S.sess.sc,
     split: S.sess.split,
     pid:   S.sess.pid,
     rater: S.sess.rater,
-    note:  `${S.sess.note || ''} | start:${S.sess.startTime} end:${S.sess.endTime}${isPartial ? ' [PARTIAL]' : ''}`.trim(),
+    note:  `${S.sess.note || ''} | start:${S._startTime} end:${endTime}${isPartial ? ' [PARTIAL]' : ''}`.trim(),
   });
-  if ($('done-txt')) {
-    $('done-txt').textContent = $('done-txt').textContent.replace(
-      '⏳ กำลังบันทึกลง Server...',
-      saveResult.ok
-        ? `✅ บันทึกลง Server แล้ว\nดาวน์โหลดได้จากหน้า Sessions`
-        : `⚠️ Server offline — กด CSV เพื่อบันทึกแทน`
-    );
-  }
 
-  // stop video recorder
-  if (S.recorder?.state !== 'inactive') {
-    S.recorder.onstop = () => {
-      if (!S.recChunks.length) return;
-      const blob = new Blob(S.recChunks, { type: 'video/webm' });
-      triggerDownload(blob, `vid_${S.sess.id}.webm`);
-      if ($('rec-lbl')) $('rec-lbl').textContent = `VID ${(S.recBytes/1048576).toFixed(1)} MB ↓`;
-    };
-    S.recorder.stop();
+  // กลับหน้าหลักทันที ไม่แสดง done modal
+  document.getElementById('saving-indicator')?.remove();
+  resetToSetup();
+
+  if (!result.ok) {
+    alert('⚠️ บันทึก Server ไม่สำเร็จ\nกรุณา export CSV แทน\n' + result.msg);
   }
+}
+
+// ── End Session (ครบ SC) → auto-save → done screen ──
+async function endSession() {
+  S.phase = 'done'; cancelAnimationFrame(S.rafId);
+  if ($('bar-fill')) $('bar-fill').style.width = '100%';
+
+  const endTime   = nowTH();
+  const isPartial = false;
+
+  // auto-save
+  const result = await autoSaveToBackend(S.gtLog, {
+    id:    S.sess.id,
+    sc:    S.sess.sc,
+    split: S.sess.split,
+    pid:   S.sess.pid,
+    rater: S.sess.rater,
+    note:  `${S.sess.note || ''} | start:${S._startTime} end:${endTime}`.trim(),
+  });
+
+  if ($('done-txt')) $('done-txt').textContent =
+    `✅ ครบ SC แล้ว!\n` +
+    `บันทึก ${S.gtLog.length} steps\n` +
+    `Session: ${S.sess.id} · ${S.sess.sc}\n` +
+    `เริ่ม: ${S._startTime}\nจบ: ${endTime}\n\n` +
+    (result.ok ? '✅ บันทึกลง Server แล้ว' : '⚠️ Server offline — กด CSV แทน');
 
   if ($('done')) $('done').style.display = 'flex';
+}
+
+// ── Reset กลับหน้า setup ─────────────────────────────
+function resetToSetup() {
+  S.phase    = 'setup';
+  S.gtLog    = [];
+  S.stepIdx  = -1;
+  S.pending  = null;
+  S.pausedMs = 0;
+  S.t0       = null;
+  if ($('sess'))  $('sess').style.display  = 'none';
+  if ($('done'))  $('done').style.display  = 'none';
+  if ($('setup')) $('setup').style.display = 'flex';
+  if ($('btn-pause')) { $('btn-pause').textContent = '⏸ หยุดชั่วคราว'; $('btn-pause').className = 'btn-ctrl pause'; }
+}
+
+function handleNewSession() {
+  resetToSetup();
 }
 
 // ── Log ───────────────────────────────────────────────
@@ -486,7 +398,7 @@ function renderLog() {
     return;
   }
   body.innerHTML = [...S.gtLog].reverse().map(e => {
-    const c = (ACT[e.act] || { color: '#ccc' }).color;
+    const c = (ACT[e.act] || { color:'#ccc' }).color;
     return `<div class="log-row">
       <span class="log-act" style="color:${c}">${e.sc}·${e.act}</span>
       <span class="log-time">${fmtMs(e.onsetMs)}</span>
@@ -494,13 +406,4 @@ function renderLog() {
     </div>`;
   }).join('');
   if (footer) footer.textContent = `${S.gtLog.length} steps`;
-}
-
-function handleNewSession() {
-  if ($('done')) $('done').style.display = 'none';
-  if ($('sess')) $('sess').style.display = 'none';
-  S.stream?.getTracks().forEach(t => t.stop());
-  S.stream = null; S.recorder = null; S.recChunks = [];
-  S.phase = 'setup';
-  if ($('setup')) $('setup').style.display = 'flex';
 }
