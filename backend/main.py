@@ -43,13 +43,14 @@ class StepLog(BaseModel):
     th:         str            # คำสั่งภาษาไทย
 
 class SessionData(BaseModel):
-    sessId:  str               # Session label
-    pid:     str               # รหัส participant
-    sc:      str               # Scenario เช่น SC-01
-    split:   str               # train / val / test
-    rater:   str               # ชื่อผู้วิจัย
-    steps:   List[StepLog]     # ข้อมูลทุก step
-    note:    Optional[str] = "" # หมายเหตุเพิ่มเติม (optional)
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    sessId:  str
+    pid:     str
+    sc:      str
+    split:   str
+    rater:   str
+    steps:   List[StepLog]
+    note:    Optional[str] = ""
 
 
 # ── Endpoints ─────────────────────────────────────────
