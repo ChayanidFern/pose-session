@@ -346,14 +346,29 @@ function handleAbort() {
   $('setup').style.display = 'flex';
 }
 
-// ── End Session ───────────────────────────────────────
-function endSession() {
-  S.phase = 'done'; cancelAnimationFrame(S.rafId);
-  $('bar-fill').style.width    = '100%';
-  $('btn-exp').disabled        = false;
-  $('btn-exp-xl').disabled     = false;
-  $('done-txt').textContent    = `บันทึก ${S.gtLog.length} steps ✓\nSession: ${S.sess.id}\nScenario: ${S.sess.sc} | Split: ${S.sess.split}`;
+// ── End Session ───────────────────────────────────────async function endSession() {
+  S.phase = 'done';
+  cancelAnimationFrame(S.rafId);
+  // ...โค้ดเดิม...
 
+  // ── Auto-save ไป Backend ทันที ──
+  try {
+    const payload = buildPayload(S.gtLog, {
+      id:    S.sess.id,
+      sc:    S.sess.sc || S.curSC,
+      split: S.sess.split,
+      pid:   S.sess.pid,
+      rater: S.sess.rater,
+      note:  S.sess.note || '',
+    });
+    const result = await apiSaveSession(payload);
+    if ($('done-txt'))
+      $('done-txt').textContent += `\n✅ บันทึกลง Server แล้ว`;
+  } catch (e) {
+    if ($('done-txt'))
+      $('done-txt').textContent += `\n⚠️ บันทึก Server ไม่สำเร็จ — ใช้ปุ่ม CSV แทน`;
+  }
+}
   if (S.recorder && S.recorder.state !== 'inactive') {
     S.recorder.onstop = () => {
       if (!S.recChunks.length) return;
