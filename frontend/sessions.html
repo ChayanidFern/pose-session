@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sessions — Neck GT</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<style>
+body{overflow:auto;padding:28px 20px}
+.page{max-width:860px;margin:0 auto}
+.page-title{font-size:20px;font-weight:700;margin-bottom:4px}
+.page-sub{font-size:12px;color:var(--tx2);margin-bottom:24px}
+.back{font-size:12px;color:var(--bfg);text-decoration:none;display:inline-flex;align-items:center;gap:4px;margin-bottom:16px}
+.back:hover{text-decoration:underline}
+.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.count-badge{font-size:11px;font-family:var(--mono);background:var(--bg3);border:1px solid var(--bdr);border-radius:4px;padding:2px 8px;color:var(--tx2)}
+.status-ok{font-size:11px;color:var(--gfg);font-family:var(--mono)}
+.status-err{font-size:11px;color:var(--rfg);font-family:var(--mono)}
+.download-all{padding:8px 18px;border-radius:var(--r);border:none;background:#1D6F42;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;margin-left:auto}
+.download-all:hover{background:#196139}
+table{width:100%;border-collapse:collapse;background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;overflow:hidden;font-size:13px}
+th{background:var(--bg3);font-size:11px;font-weight:600;color:var(--tx2);padding:9px 12px;text-align:left;border-bottom:1px solid var(--bdr);letter-spacing:.04em}
+td{padding:9px 12px;border-bottom:1px solid var(--bdr);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--bg3)}
+.mono{font-family:var(--mono);font-size:11px;color:var(--tx2)}
+.btn-dl{padding:4px 12px;border-radius:6px;border:none;background:var(--green);color:#fff;font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer}
+.btn-dl:hover{background:#2EA043}
+.btn-del{padding:4px 10px;border-radius:6px;border:1px solid var(--bdr);background:transparent;color:var(--rfg);font-family:var(--font);font-size:12px;cursor:pointer}
+.btn-del:hover{background:#2D1414}
+.empty{text-align:center;padding:40px;color:var(--tx3);font-size:13px}
+.info-box{background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:16px 20px;margin-bottom:16px;font-size:13px;color:var(--tx2);line-height:1.7}
+.info-box strong{color:var(--tx);font-weight:600}
+</style>
+</head>
+<body>
+<div class="page">
+  <a href="index.html" class="back">← กลับหน้าหลัก</a>
+  <div class="page-title">🗂 Session Manager</div>
+  <div class="page-sub">ข้อมูลทุก session สะสมใน <strong>all_sessions.xlsx</strong> ไฟล์เดียว แยก sheet ตาม SC</div>
+
+  <div class="info-box">
+    <strong>โครงสร้าง Excel:</strong> ไฟล์ <code>all_sessions.xlsx</code> มี sheet แยกตาม SC (SC-01, SC-02...) และ sheet <strong>สรุปทั้งหมด</strong> — ข้อมูลสะสมต่อกันทุก session เหมือน Google Form
+  </div>
+
+  <div class="toolbar">
+    <span id="api-status" class="status-ok">⏳ ตรวจสอบ...</span>
+    <span class="count-badge" id="count-badge">0 sessions</span>
+    <button class="btn-ctrl skip" style="padding:6px 14px;font-size:12px" onclick="loadSessions()">🔄 รีเฟรช</button>
+    <button class="download-all" onclick="downloadMaster()">⬇ ดาวน์โหลด Excel ทั้งหมด</button>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Session ID</th>
+        <th>SC</th>
+        <th>Participant</th>
+        <th>ขนาด</th>
+        <th>บันทึกเมื่อ</th>
+        <th></th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="sessions-body">
+      <tr><td colspan="7" class="empty">⏳ กำลังโหลด...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+async function loadSessions() {
+  const ok = await apiHealthCheck();
+  const el = document.getElementById('api-status');
+  el.textContent = ok ? '✅ Backend Online' : '❌ Backend Offline';
+  el.className   = ok ? 'status-ok' : 'status-err';
+
+  if (!ok) {
+    document.getElementById('sessions-body').innerHTML =
+      `<tr><td colspan="7" class="empty">❌ ไม่สามารถเชื่อมต่อ Backend<br><small>ตรวจสอบว่า Railway รันอยู่</small></td></tr>`;
+    return;
+  }
+
+  try {
+    const data = await apiListSessions();
+    document.getElementById('count-badge').textContent = `${data.count} files`;
+    if (!data.sessions.length) {
+      document.getElementById('sessions-body').innerHTML =
+        `<tr><td colspan="7" class="empty">ยังไม่มีข้อมูล — เริ่ม Session แรกได้เลย</td></tr>`;
+      return;
+    }
+
+    document.getElementById('sessions-body').innerHTML = data.sessions.map(s => {
+      // แยก session info จากชื่อไฟล์
+      const parts = s.filename.replace('.xlsx','').split('_');
+      const sessId = parts.slice(1, -4).join('_') || s.filename;
+      const sc     = parts.find(p => p.startsWith('SC')) || '—';
+      const pid    = parts.find(p => p.startsWith('P') && p !== parts[0]) || '—';
+      return `<tr>
+        <td class="mono">${sessId}</td>
+        <td class="mono">${sc}</td>
+        <td class="mono">${pid}</td>
+        <td class="mono">${s.size_kb} KB</td>
+        <td class="mono">${s.created}</td>
+        <td><button class="btn-dl" onclick="apiDownloadExcel('${s.filename}')">⬇ Download</button></td>
+        <td><button class="btn-del" onclick="delSession('${s.filename}')">🗑</button></td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    document.getElementById('sessions-body').innerHTML =
+      `<tr><td colspan="7" class="empty">❌ ${e.message}</td></tr>`;
+  }
+}
+
+async function downloadMaster() {
+  try { await apiDownloadExcel('all_sessions.xlsx'); }
+  catch { alert('ยังไม่มีไฟล์ all_sessions.xlsx — เริ่ม Session แรกก่อนค่ะ'); }
+}
+
+async function delSession(filename) {
+  if (!confirm(`ลบ ${filename}?`)) return;
+  try { await apiDeleteSession(filename); loadSessions(); }
+  catch (e) { alert('ลบไม่สำเร็จ: ' + e.message); }
+}
+
+loadSessions();
+</script>
+</body>
+</html>
