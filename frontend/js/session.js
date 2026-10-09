@@ -328,11 +328,12 @@ async function handleStop() {
   });
 }
   // แสดง saving indicator
+   // แสดง saving indicator
   if ($('sess')) {
     const ind = document.createElement('div');
     ind.id = 'saving-indicator';
-    ind.style.cssText = 'position:fixed;inset:0;background:rgba(13,17,23,.88);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;z-index:999;color:#E6EDF3;font-family:var(--font)';
-    ind.innerHTML = '<div style="font-size:36px">⏳</div><div style="font-size:18px;font-weight:600">กำลังบันทึกลง Server...</div>';
+    ind.style.cssText = '...';
+    ind.innerHTML = '...';
     document.body.appendChild(ind);
   }
 
@@ -340,19 +341,14 @@ async function handleStop() {
   const endTime = nowTH();
   const isPartial = S.gtLog.length < (SC[S.sess.sc]?.steps.length || 0);
   const result = await autoSaveToBackend(S.gtLog, {
-    id:    S.sess.id,
-    sc:    S.sess.sc,
-    split: S.sess.split,
-    pid:   S.sess.pid,
-    rater: S.sess.rater,
-    note:  `${S.sess.note || ''} | start:${S._startTime} end:${endTime}${isPartial ? ' [PARTIAL]' : ''}`.trim(),
+    ...
   });
 
   // กลับหน้าหลักทันที ไม่แสดง done modal
   document.getElementById('saving-indicator')?.remove();
   resetToSetup();
 
-  if (!result.ok) {
+ if (!result.ok) {
     alert('⚠️ บันทึก Server ไม่สำเร็จ\nกรุณา export CSV แทน\n' + result.msg);
   }
 }
