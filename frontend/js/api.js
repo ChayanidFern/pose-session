@@ -8,7 +8,7 @@
 // เช่น "https://neck-gt-backend.up.railway.app"
 const API_BASE_URL = window.location.hostname === "localhost"
   ? "http://localhost:8000"
-  : "pose-session-production.up.railway.app"; // ← แก้ตรงนี้
+  : "https://pose-session-production.up.railway.app"; // ← แก้ตรงนี้
 
 
 // ── Save session to backend → ได้ Excel ──────────────
