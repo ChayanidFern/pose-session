@@ -24,10 +24,11 @@ app = FastAPI(
 # ── CORS (อนุญาต frontend เรียก API) ─────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],          # ✏️ เปลี่ยนเป็น URL จริงเมื่อ deploy
+    allow_origins=["https://pose-session.vercel.app", "http://localhost:3000", "http://localhost:8000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
 )
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
