@@ -11,7 +11,23 @@ from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 from datetime import datetime
 import os
+# ── Keep-alive: ping ตัวเองทุก 5 นาที ────────────────
+import threading, urllib.request
 
+def _keep_alive():
+    import time
+    time.sleep(60)  # รอ 1 นาทีหลัง start
+    while True:
+        try:
+            urllib.request.urlopen(
+                "https://pose-session-production.up.railway.app/",
+                timeout=10
+            )
+        except:
+            pass
+        time.sleep(270)  # ping ทุก 4.5 นาที
+
+threading.Thread(target=_keep_alive, daemon=True).start()
 from excel_writer import save_session_to_excel, list_sessions
 
 # ── App ──────────────────────────────────────────────
