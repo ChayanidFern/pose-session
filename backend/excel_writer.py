@@ -319,3 +319,66 @@ def list_sessions(data_dir: str) -> list:
                 "download": f"/api/download/{f}",
             })
     return files
+MASTER_FILE = "all_sessions.xlsx"
+
+def save_session_to_excel(sess: Dict, data_dir: str) -> str:
+    steps    = sess.get("steps", [])
+    pid      = sess.get("pid", "P00")
+    sc       = sess.get("sc", "SC-00")
+    sess_id  = sess.get("sessId", f"sess_{int(datetime.now().timestamp())}")
+    split    = sess.get("split", "train")
+    rater    = sess.get("rater", "")
+    note     = sess.get("note", "")
+    ts       = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    master_path = os.path.join(data_dir, MASTER_FILE)
+
+    # โหลดไฟล์เดิมถ้ามี ถ้าไม่มีสร้างใหม่
+    if os.path.exists(master_path):
+        wb = openpyxl.load_workbook(master_path)
+        ws = wb["ข้อมูล GT"]
+    else:
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "ข้อมูล GT"
+        # เขียน header ครั้งแรกครั้งเดียว
+        headers = ["ลำดับ","Session","Participant","Scenario","Split","Rater",
+                   "กิจกรรม","ชื่อกิจกรรม","คำสั่ง",
+                   "เวลาเริ่ม(ms)","เวลาสิ้นสุด(ms)","ระยะเวลา(ms)","ระยะเวลา(s)",
+                   "Note","Timestamp"]
+        for col, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=h)
+            cell.font = Font(name="Sarabun", bold=True, color="E6EDF3")
+            cell.fill = PatternFill("solid", fgColor="1C2333")
+            cell.alignment = Alignment(horizontal="center")
+
+    # หาแถวล่าสุด
+    next_row = ws.max_row + 1
+    global_idx = next_row - 1  # ลำดับต่อเนื่อง
+
+    for step in steps:
+        act = step.get("act", "")
+        row_data = [
+            global_idx,
+            sess_id, pid, sc, split, rater,
+            act,
+            ACT_NAME_TH.get(act, act),
+            step.get("th", ""),
+            step.get("onsetMs", 0),
+            step.get("offsetMs", 0),
+            step.get("durationMs", 0),
+            round(step.get("durationMs", 0) / 1000, 2),
+            note, ts
+        ]
+        _, risk_color = ACT_RISK.get(act, ("—", "FFFFFF"))
+        fill = PatternFill("solid", fgColor=risk_color)
+        for col, val in enumerate(row_data, 1):
+            cell = ws.cell(row=next_row, column=col, value=val)
+            cell.fill = fill
+            cell.font = Font(name="Sarabun", size=10)
+            cell.alignment = Alignment(horizontal="center")
+        next_row += 1
+        global_idx += 1
+
+    wb.save(master_path)
+    return MASTER_FILE
