@@ -301,16 +301,32 @@ function handleSkip() {
 
 // ── หยุดบันทึก → confirm → บันทึก → กลับหน้าหลักทันที
 async function handleStop() {
-  if (!confirm('⏹ ยืนยันหยุดบันทึก?\n\nข้อมูลที่ได้จนถึงตอนนี้จะถูกบันทึกลง Server อัตโนมัติ\nแล้วกลับหน้าหลักทันที')) return;
+  if (!confirm('⏹ ยืนยันหยุดบันทึก?\n\nข้อมูลจะถูกบันทึกลง Server อัตโนมัติ')) return;
 
   clearTimeout(S.timer); cancelAnimationFrame(S.rafId);
   clearInterval(S.transIv); S.transIv = null;
   $('prep-overlay')?.classList.remove('show');
-
   if (S.phase === 'paused') S.pausedMs += performance.now() - S.pauseT;
   S.phase = 'saving';
   finalizeStep();
 
+  // กลับหน้าหลักทันที ไม่รอ
+  resetToSetup();
+
+  // บันทึกใน background
+  const endTime = nowTH();
+  const isPartial = S.gtLog.length < (SC[S.sess.sc]?.steps.length || 0);
+  autoSaveToBackend(S.gtLog, {
+    id:    S.sess.id,
+    sc:    S.sess.sc,
+    split: S.sess.split,
+    pid:   S.sess.pid,
+    rater: S.sess.rater,
+    note:  `${S.sess.note || ''} | start:${S._startTime} end:${endTime}${isPartial ? ' [PARTIAL]' : ''}`.trim(),
+  }).then(r => {
+    if (!r.ok) console.warn('บันทึกไม่สำเร็จ:', r.msg);
+  });
+}
   // แสดง saving indicator
   if ($('sess')) {
     const ind = document.createElement('div');
