@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Neck GT Controller</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════
+     SETUP PAGE
+     ══════════════════════════════════════════════ -->
+<div id="setup">
+  <div class="setup-left">
+    <div class="setup-logo">🦴</div>
+    <div class="setup-title">Neck GT Controller</div>
+    <div class="setup-sub">ระบบเก็บข้อมูลท่านั่งสำหรับ<br>Text Neck Syndrome Dataset</div>
+
+    <div class="fn-list">
+      <div class="fn-item">
+        <div class="fn-icon">📷</div>
+        <div class="fn-text">
+          <div class="fn-name">บันทึกวิดีโอ Real-time</div>
+          <div class="fn-desc">เปิดกล้องผ่าน browser — บันทึกวิดีโอ .webm ตลอด session ดาวน์โหลดอัตโนมัติเมื่อจบ</div>
+        </div>
+      </div>
+      <div class="fn-item">
+        <div class="fn-icon">📋</div>
+        <div class="fn-text">
+          <div class="fn-name">คำสั่งแบบ Step-by-step</div>
+          <div class="fn-desc">แสดงคำสั่งทีละขั้น พร้อม countdown ring และ preview ขั้นถัดไป</div>
+        </div>
+      </div>
+      <div class="fn-item">
+        <div class="fn-icon">🔔</div>
+        <div class="fn-text">
+          <div class="fn-name">เสียงแจ้งเตือนอัตโนมัติ</div>
+          <div class="fn-desc">ดัง 3 โน้ตเมื่อครบเวลาแต่ละขั้น + เตือนล่วงหน้า 3 วินาที</div>
+        </div>
+      </div>
+      <div class="fn-item">
+        <div class="fn-icon">📊</div>
+        <div class="fn-text">
+          <div class="fn-name">บันทึก Excel ผ่าน Backend</div>
+          <div class="fn-desc">ส่งข้อมูลไป FastAPI สร้าง .xlsx สวยงาม 3 sheet เก็บไว้ใน server ดาวน์โหลดได้ตลอด</div>
+        </div>
+      </div>
+      <div class="fn-item">
+        <div class="fn-icon">🗂</div>
+        <div class="fn-text">
+          <div class="fn-name">Session Manager</div>
+          <div class="fn-desc">ดู/ดาวน์โหลด/ลบ session ทั้งหมดที่บันทึกไว้จากหน้า Sessions</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="setup-divider"></div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div class="setup-footer-note" id="api-indicator">⏳ ตรวจสอบ Backend...</div>
+      <a href="sessions.html" style="font-size:12px;color:var(--bfg);text-decoration:none">🗂 ดู Sessions ทั้งหมด →</a>
+    </div>
+  </div>
+
+  <div class="setup-right">
+
+    <div>
+      <div class="form-heading">ข้อมูล Session</div>
+      <div class="grid2">
+        <div class="f span2">
+          <label>Session Label</label>
+          <input id="inp-sess" placeholder="เช่น P01_SC03_train">
+          <div class="hint">ตั้งชื่อให้จำง่าย ใช้เป็นชื่อไฟล์ Excel และวิดีโอ</div>
+        </div>
+        <div class="f">
+          <label>รหัส Participant</label>
+          <input id="inp-pid" placeholder="เช่น P01">
+          <div class="hint">รหัสผู้ร่วมวิจัย ใช้แทนชื่อจริง</div>
+        </div>
+        <div class="f">
+          <label>ผู้บันทึก (Rater)</label>
+          <input id="inp-rater" placeholder="ชื่อผู้วิจัย">
+          <div class="hint">ชื่อคนที่ดูแล session นี้</div>
+        </div>
+        <div class="f span2">
+          <label>หมายเหตุ (ถ้ามี)</label>
+          <input id="inp-note" placeholder="เช่น ผู้ร่วมวิจัยสวมแว่น, ห้องมีแสงน้อย">
+          <div class="hint">บันทึกใน Excel sheet Metadata</div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="form-heading">เลือก Scenario</div>
+      <div class="f">
+        <label>Scenario</label>
+        <select id="inp-sc"></select>
+      </div>
+      <div class="sc-preview-box" id="sc-preview" style="margin-top:8px">
+        <div style="color:var(--tx3);font-size:12px">เลือก Scenario เพื่อดูรายละเอียด</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="form-heading">ตั้งค่า Dataset</div>
+      <div class="grid2">
+        <div class="f">
+          <label>Split</label>
+          <select id="inp-split">
+            <option value="train">train — สำหรับเทรนโมเดล (70%)</option>
+            <option value="val">val — สำหรับ validate (15%)</option>
+            <option value="test">test — สำหรับทดสอบสุดท้าย (15%)</option>
+          </select>
+          <div class="hint">แบ่ง dataset สำหรับ ML pipeline</div>
+        </div>
+        <div class="f">
+          <label>หน่วงเวลาระหว่าง Step</label>
+          <select id="inp-trans">
+            <option value="0">ไม่หน่วง</option>
+            <option value="2000">2 วินาที</option>
+            <option value="3000" selected>3 วินาที — แนะนำ</option>
+            <option value="5000">5 วินาที</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="form-heading">เสียงแจ้งเตือน</div>
+      <div class="sound-row" id="sound-opts">
+        <label class="sound-opt selected">
+          <input type="radio" name="sound" value="all" checked>
+          <div class="sname">🔔 เปิดทั้งหมด</div>
+          <div class="sdesc">เสียงเริ่ม step + ครบเวลา</div>
+        </label>
+        <label class="sound-opt">
+          <input type="radio" name="sound" value="ding">
+          <div class="sname">🔕 เฉพาะครบเวลา</div>
+          <div class="sdesc">ดังเมื่อ step จบเท่านั้น</div>
+        </label>
+        <label class="sound-opt">
+          <input type="radio" name="sound" value="off">
+          <div class="sname">🔇 ปิดเสียง</div>
+          <div class="sdesc">ดูจาก countdown</div>
+        </label>
+      </div>
+    </div>
+
+    <div id="ipad-warn" style="display:none;background:#2D1F06;border:1px solid var(--afg);border-radius:var(--r);padding:10px 12px;font-size:12px;color:var(--afg);line-height:1.7">
+      ⚠️ <strong>iPad/Safari:</strong> ต้องเปิดผ่าน HTTPS<br>
+      ใช้ URL จาก Railway โดยตรงได้เลยค่ะ
+    </div>
+
+    <button class="btn-go" id="btn-go">📷 เปิดกล้องและเริ่ม Session</button>
+  </div>
+</div>
+
+<!-- COUNTDOWN -->
+<div id="cdown">
+  <video id="cam-small" autoplay muted playsinline></video>
+  <div id="cdown-n">3</div>
+  <div id="cdown-lbl">เตรียมพร้อม...</div>
+</div>
+
+<!-- SESSION -->
+<div id="sess">
+  <div class="hdr">
+    <span class="badge-mono" id="h-sess">—</span>
+    <span class="badge-sc"   id="h-sc">—</span>
+    <span class="hdr-steps"  id="h-steps">0/0</span>
+    <span class="hdr-clock"  id="h-clock">0:00.0</span>
+    <button class="btn-sm" id="btn-log">📋 Log</button>
+    <button class="btn-sm red" id="btn-abort">✕ ยกเลิก</button>
+  </div>
+  <div class="step-bar"><div class="step-bar-fill" id="bar-fill" style="width:0%"></div></div>
+
+  <div class="sess-body">
+    <div class="cam-side">
+      <video id="cam-feed" autoplay muted playsinline></video>
+      <div class="cam-overlay">
+        <div class="rec-pill"><div class="rec-dot"></div><span id="rec-lbl">LIVE</span></div>
+      </div>
+    </div>
+    <div class="instr-side">
+      <div class="act-badge"  id="i-badge">—</div>
+      <div class="act-name"   id="i-name">—</div>
+      <div class="instr-th"   id="i-th">—</div>
+      <div class="instr-note" id="i-note">—</div>
+      <div class="ring-wrap">
+        <svg width="150" height="150" viewBox="0 0 150 150">
+          <circle class="ring-bg"  cx="75" cy="75" r="68"/>
+          <circle class="ring-arc" id="ring-arc" cx="75" cy="75" r="68" stroke="#3FB950"/>
+        </svg>
+        <div class="ring-num" id="ring-num">—</div>
+      </div>
+      <div id="i-next-wrap">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="next-label">ถัดไป</span>
+          <span class="next-act-badge" id="i-next-badge" style="color:var(--tx3);border-color:var(--bdr)">—</span>
+        </div>
+        <div class="next-th"   id="i-next-th">—</div>
+        <div class="next-note" id="i-next-note">—</div>
+      </div>
+      <div class="prepare-overlay" id="prep-overlay">
+        <span class="prep-label">เตรียมพร้อม</span>
+        <div class="prepare-n"       id="prep-n">3</div>
+        <div class="prep-sep"></div>
+        <div class="prep-next-badge"  id="prep-next-badge" style="color:var(--tx2)">—</div>
+        <div class="prep-next-th"     id="prep-next-th">—</div>
+        <div class="prep-next-note"   id="prep-next-note">—</div>
+      </div>
+      <div class="ding-overlay" id="ding-overlay"></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <button class="btn-ctrl pause"  id="btn-pause"  disabled>⏸ หยุดชั่วคราว</button>
+    <button class="btn-ctrl skip"   id="btn-skip"   disabled>⏭ ข้ามขั้นตอน</button>
+    <button class="btn-ctrl stop"   id="btn-stop"   disabled>⏹ สิ้นสุด</button>
+    <button class="btn-ctrl export" id="btn-exp"    disabled>⬇ CSV</button>
+    <button class="btn-ctrl btn-xl" id="btn-exp-xl" disabled>⬇ Excel</button>
+  </div>
+</div>
+
+<!-- LOG DRAWER -->
+<div class="log-drawer" id="log-drawer">
+  <div class="log-hdr">
+    <h3>Activity Log</h3>
+    <button class="btn-sm" id="btn-close-log">✕</button>
+  </div>
+  <div class="log-body"   id="log-body"><div style="color:var(--tx3);font-size:11px;text-align:center;padding:16px">ยังไม่มีข้อมูล</div></div>
+  <div class="log-footer" id="log-footer">0 steps</div>
+</div>
+
+<!-- DONE MODAL -->
+<div id="done">
+  <div class="done-card">
+    <h2>✓ Session สมบูรณ์</h2>
+    <p id="done-txt">—</p>
+    <div class="done-row">
+      <button class="btn-ctrl export" id="btn-exp2">⬇ CSV</button>
+      <button class="btn-ctrl btn-xl" id="btn-exp-xl2">⬇ Excel (Backend)</button>
+      <button class="btn-ctrl play"   id="btn-new">+ Session ใหม่</button>
+    </div>
+    <div style="margin-top:12px">
+      <a href="sessions.html" style="font-size:12px;color:var(--bfg);text-decoration:none">🗂 ดู Sessions ทั้งหมด →</a>
+    </div>
+  </div>
+</div>
+
+<!-- SCRIPTS -->
+<script src="data/scenarios.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/api.js"></script>
+<script src="js/export.js"></script>
+<script src="js/session.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", async () => {
+  $("ring-arc").style.strokeDasharray = RING_C;
+  initSetup();
+
+  // API health check
+  const ok  = await apiHealthCheck();
+  const ind = document.getElementById("api-indicator");
+  ind.textContent = ok ? "✅ Backend Online" : "⚠️ Backend Offline — ใช้ CSV แทน";
+  ind.style.color = ok ? "var(--gfg)" : "var(--afg)";
+
+  // Wire buttons
+  $("btn-go").addEventListener("click", handleStart);
+  $("btn-pause").addEventListener("click", handlePause);
+  $("btn-skip").addEventListener("click", handleSkip);
+  $("btn-stop").addEventListener("click", handleStop);
+  $("btn-abort").addEventListener("click", handleAbort);
+  $("btn-new").addEventListener("click", handleNewSession);
+  $("btn-log").addEventListener("click", () => $("log-drawer").classList.toggle("open"));
+  $("btn-close-log").addEventListener("click", () => $("log-drawer").classList.remove("open"));
+
+  $("btn-exp").addEventListener("click",     () => doExportCSV(S.gtLog, S.sess));
+  $("btn-exp2").addEventListener("click",    () => doExportCSV(S.gtLog, S.sess));
+  $("btn-exp-xl").addEventListener("click",  () => doExportExcel(S.gtLog, S.sess));
+  $("btn-exp-xl2").addEventListener("click", () => doExportExcel(S.gtLog, S.sess));
+});
+</script>
+
+</body>
+</html>
